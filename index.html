@@ -29,6 +29,10 @@ button{border:0;background:none;cursor:pointer}
 .id{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
 .nom{font:italic 500 27px/1 var(--marque)}
 .etat{font-size:14px;color:var(--sauge);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .3s}
+.stop{display:none;align-items:center;gap:7px;font-size:13px;color:var(--lilas);padding:7px 12px;border-radius:999px;background:rgba(180,155,240,.16);flex:none}
+.stop svg{width:12px;height:12px}
+body.audio .stop{display:inline-flex}
+body.audio .lien{display:none}
 .lien{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--heure);padding:6px 11px;border-radius:999px;background:var(--surf-btn);flex:none}
 .lien::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--pause)}
 .lien.ok::before{background:var(--sauge)}
@@ -149,6 +153,7 @@ button{border:0;background:none;cursor:pointer}
     <span class="nom" id="nom">léa</span>
     <span class="etat" id="etat" aria-live="polite">connexion…</span>
   </div>
+  <button class="stop" id="stop" type="button" aria-label="Arrêter de parler"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="2"/></svg>Stop</button>
   <span class="lien" id="lien">PC</span>
 </header>
 
@@ -327,7 +332,11 @@ function suivant(){
   lecteur.src = BASE + "/api/audio/" + file.shift() + "?t=" + encodeURIComponent(token);
   lecteur.play().catch(() => { lecture = false; });
 }
-lecteur.onended = lecteur.onerror = () => { lecture = false; suivant(); };
+lecteur.onended = lecteur.onerror = () => { lecture = false; document.body.classList.remove("audio"); suivant(); };
+lecteur.onplay = () => document.body.classList.add("audio");
+function couper(){ file.length = 0; lecteur.pause(); lecture = false; document.body.classList.remove("audio"); }
+$("stop").onclick = couper;
+document.querySelector(".orbe").onclick = () => { if (lecture) couper(); };
 
 /* ---------- confirmations ---------- */
 let confirmId = null;
