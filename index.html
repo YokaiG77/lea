@@ -86,6 +86,11 @@ body.audio .lien{display:none}
 .puce:active{background:#2C3A32}
 .puce.scene{background:none;box-shadow:inset 0 0 0 1px var(--bord-saisie);color:var(--texte-2)}
 .puce.actif{background:var(--sauge);color:var(--sauge-sombre)}
+.puce.fort{background:rgba(180,155,240,.16);color:var(--lilas)}
+.onglets{display:flex;gap:4px;overflow-x:auto;padding:0 16px 8px;scrollbar-width:none;flex:none}
+.onglets::-webkit-scrollbar{display:none}
+.onglet{flex:none;padding:5px 10px;border-radius:999px;font-size:12.5px;color:var(--heure);white-space:nowrap}
+.onglet[aria-selected="true"]{color:var(--texte);background:var(--surf-btn)}
 
 /* conversation */
 .fil{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:18px;overscroll-behavior:contain}
@@ -157,6 +162,7 @@ body.audio .lien{display:none}
   <span class="lien" id="lien">PC</span>
 </header>
 
+<nav class="onglets" id="onglets" role="tablist" aria-label="Groupes d'actions"></nav>
 <nav class="rapides" id="rapides" aria-label="Actions rapides"></nav>
 <div class="trait"></div>
 
@@ -228,7 +234,7 @@ function appliquer(){
 
 if (!token || !canal) {
   $("fil").innerHTML = '<div class="appairage"><h2>Bienvenue</h2><p>Sur ton PC, lance <b>installer_telephone.bat</b>, puis scanne le QR code affiché avec l\'appareil photo de ce téléphone.</p></div>';
-  $("form").style.display = "none"; $("rapides").style.display = "none";
+  $("form").style.display = "none"; $("rapides").style.display = "none"; $("onglets").style.display = "none";
   $("etat").textContent = "pas encore appairée"; $("lien").textContent = "PC non relié"; $("lien").className = "lien";
   return;
 }
@@ -351,7 +357,6 @@ $("c-oui").onclick = () => repondre(true);
 $("c-non").onclick = () => repondre(false);
 
 /* ---------- actions rapides ---------- */
-const RAPIDES = [["music_toggle","Pause / lecture"],["music_next","Suivant"],["music_restart","Au début"]];
 async function rapide(action, value){
   navigator.vibrate?.(25);
   try { await api("/api/quick", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({action, value})}); }
@@ -361,18 +366,47 @@ function puce(label, action, value, cls){
   const b = document.createElement("button"); b.className = "puce" + (cls ? " " + cls : ""); b.textContent = label;
   b.dataset.a = action; b.onclick = () => rapide(action, value); return b;
 }
+/* groupes d'actions : un onglet par usage, les puces du groupe choisi en dessous */
+let infos = {}, groupe = "stream";
+try { groupe = localStorage.getItem("lea-groupe") || "stream"; } catch(e) {}
+function groupes(){
+  const g = [];
+  const stream = [["Lancer le live","live_start",null,"fort"],["Pause 5 min","pause_5"],["Pause 10 min","pause_10"],
+                  ["Fin de pause","pause_stop"],["Arrêter le live","live_stop"]];
+  if (infos.routines?.includes("stream")) stream.unshift(["Prépare le stream","prep_stream"]);
+  if (infos.routines?.includes("soullink")) stream.splice(1, 0, ["Prépare le soullink","prep_soullink"]);
+  g.push(["stream","Stream",stream]);
+  const scenes = (infos.scenes || []).map(s => [s,"obs_scene",s,"scene"]);
+  if (scenes.length) g.push(["scenes","Scènes",scenes]);
+  g.push(["musique","Musique",[["Pause / lecture","music_toggle"],["Suivant","music_next"],["Précédent","music_previous"],["Au début","music_restart"]]]);
+  const disc = [];
+  if (infos.shortcuts?.includes("discord_micro")) disc.push(["Micro Discord","discord_micro"]);
+  if (infos.shortcuts?.includes("discord_sourdine")) disc.push(["Sourdine","discord_sourdine"]);
+  disc.push(["Notes de réunion","notes_start"],["Fin de réunion","notes_stop"]);
+  g.push(["discord","Discord",disc]);
+  g.push(["pc","PC",[["Mode jeu","mode_jeu"],["Mode stream","mode_stream"],["Mode taff","mode_taff"],
+                     ["Mode repos","mode_repos"],["Mode normal","mode_normal"],["Écoute PC","lea_pause"]]]);
+  return g;
+}
+function afficherGroupes(){
+  const g = groupes(), o = $("onglets"), r = $("rapides");
+  if (!g.some(x => x[0] === groupe)) groupe = "stream";
+  o.innerHTML = ""; r.innerHTML = "";
+  g.forEach(([id, label]) => {
+    const b = document.createElement("button"); b.className = "onglet"; b.textContent = label;
+    b.setAttribute("role","tab"); b.setAttribute("aria-selected", id === groupe ? "true" : "false");
+    b.onclick = () => { groupe = id; try { localStorage.setItem("lea-groupe", id); } catch(e) {} afficherGroupes(); };
+    o.append(b);
+  });
+  (g.find(x => x[0] === groupe) || g[0])[2].forEach(([l, a, v, cls]) => r.append(puce(l, a, v ?? undefined, cls)));
+  appliquer();
+}
 async function chargerInfos(){
   try {
-    const info = await api("/api/info");
-    if (info.name) { nomAff = info.name; $("nom").textContent = info.name.toLowerCase(); document.title = info.name; }
-    pause = !!info.paused;
-    const r = $("rapides"); r.innerHTML = "";
-    RAPIDES.forEach(([a,l]) => r.append(puce(l, a)));
-    if (info.shortcuts?.includes("discord_micro")) r.append(puce("Micro Discord", "discord_micro"));
-    if (info.shortcuts?.includes("discord_sourdine")) r.append(puce("Sourdine", "discord_sourdine"));
-    r.append(puce("Écoute PC", "lea_pause"));
-    (info.scenes || []).forEach(s => r.append(puce(s, "obs_scene", s, "scene")));
-    appliquer();
+    infos = await api("/api/info");
+    if (infos.name) { nomAff = infos.name; $("nom").textContent = infos.name.toLowerCase(); document.title = infos.name; }
+    pause = !!infos.paused;
+    afficherGroupes();
   } catch(e) { /* le PC peut ne pas etre pret, on reessaiera a la prochaine connexion */ }
 }
 
